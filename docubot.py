@@ -9,6 +9,7 @@ Core DocuBot class responsible for:
 
 import os
 import glob
+import re
 
 class DocuBot:
     def __init__(self, docs_folder="docs", llm_client=None):
@@ -50,7 +51,6 @@ class DocuBot:
 
     def build_index(self, documents):
         """
-        TODO (Phase 1):
         Build a tiny inverted index mapping lowercase words to the documents
         they appear in.
 
@@ -59,12 +59,13 @@ class DocuBot:
             "token": ["AUTH.md", "API_REFERENCE.md"],
             "database": ["DATABASE.md"]
         }
-
-        Keep this simple: split on whitespace, lowercase tokens,
-        ignore punctuation if needed.
         """
         index = {}
-        # TODO: implement simple indexing
+        for filename, text in documents:
+            clean_text = re.sub(r"[^\w\s]", "", text.lower())
+            tokens = set(clean_text.split())
+            for token in tokens:
+                index.setdefault(token, []).append(filename)
         return index
 
     # -----------------------------------------------------------
@@ -73,7 +74,6 @@ class DocuBot:
 
     def score_document(self, query, text):
         """
-        TODO (Phase 1):
         Return a simple relevance score for how well the text matches the query.
 
         Suggested baseline:
@@ -81,8 +81,9 @@ class DocuBot:
         - Count how many appear in the text
         - Return the count as the score
         """
-        # TODO: implement scoring
-        return 0
+        query_words = re.sub(r"[^\w\s]", "", query.lower()).split()
+        text_words = set(re.sub(r"[^\w\s]", "", text.lower()).split())
+        return sum(1 for word in query_words if word in text_words)
 
     def retrieve(self, query, top_k=3):
         """
@@ -91,9 +92,24 @@ class DocuBot:
 
         Return a list of (filename, text) sorted by score descending.
         """
-        results = []
-        # TODO: implement retrieval logic
-        return results[:top_k]
+        query_words = re.sub(r"[^\w\s]", "", query.lower()).split()
+
+        # Find matching documents from index
+        candidates = set()
+        for word in query_words:
+            candidates.update(self.index.get(word, []))
+
+        target_docs = [doc for doc in self.documents if doc[0] in candidates] or self.documents
+
+        # Rank candidates by relevance
+        scored = []
+        for filename, text in target_docs:
+            score = self.score_document(query, text)
+            if score > 0:
+                scored.append((score, filename, text))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [(filename, text) for _, filename, text in scored[:top_k]]
 
     # -----------------------------------------------------------
     # Answering Modes
